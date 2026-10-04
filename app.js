@@ -56,10 +56,18 @@ function pageLines(tc) {
   }
   return lines.map(l => ({ ...l, t: clean(l.t) })).filter(l => l.t);
 }
-const join = (a, b) => (/[a-z]-$/.test(a) && /^[a-z]/.test(b)) ? a.slice(0, -1) + b : a + ' ' + b;
+let HV = new Set(); // hyphenated words seen mid-line in this book (so real compounds keep their hyphen)
+function join(a, b) {
+  if (/[a-z]-$/.test(a) && /^[a-z]/.test(b)) {
+    const m = /([A-Za-z]+)-$/.exec(a), w = /^[a-z]+/.exec(b)[0];
+    return m && HV.has((m[1] + '-' + w).toLowerCase()) ? a + b : a.slice(0, -1) + b;
+  }
+  return a + ' ' + b;
+}
 
 function buildBlocks(pages) {
   const n = pages.length;
+  HV = new Set(); pages.forEach(p => p.forEach(l => (l.t.match(/[A-Za-z]+(?:-[A-Za-z]+)+/g) || []).forEach(w => HV.add(w.toLowerCase()))));
   if (n >= 4) { // drop repeated running headers/footers and page numbers (only at page edges)
     const key = t => t.toLowerCase().replace(/\d+/g, '#'), cnt = {}, lim = Math.max(3, n * 0.25);
     const edges = p => [...p.slice(0, 2), ...p.slice(-2)];
@@ -141,7 +149,7 @@ async function importFile(file) {
     let pdf; const buf = await file.arrayBuffer();
     try { pdf = await pdfjsLib.getDocument({ data: buf }).promise; }
     catch (e) { throw new AppError(e && e.name === 'PasswordException' ? 'This PDF is password-protected. Remove the password and try again.' : 'This file couldn’t be opened. It may be damaged or not a real PDF.'); }
-    const info = await pdf.getMetadata().then(m => m.info || {}).catch(() => ({}));
+    const info = await Promise.resolve().then(() => pdf.getMetadata()).then(m => m.info || {}).catch(() => ({}));
     const pages = [];
     for (let n = 1; n <= pdf.numPages; n++) {
       const pg = await pdf.getPage(n); pages.push(pageLines(await pg.getTextContent())); pg.cleanup();
@@ -160,7 +168,7 @@ async function importFile(file) {
   } catch (e) {
     busy(false);
     toast(e instanceof AppError ? e.message : (e && e.name === 'QuotaExceededError') ? 'Not enough storage space on this device for this book.' : 'Something went wrong reading this PDF. It may be damaged or unusual.');
-    console.error(e);
+    if (!(e instanceof AppError)) console.error(e);
   }
 }
 

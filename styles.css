@@ -30,7 +30,7 @@ button:focus-visible,.btn:focus-visible,input:focus-visible,select:focus-visible
 .bar{height:8px;background:var(--line);border-radius:6px;overflow:hidden;margin:10px 0 6px}
 .bar i{display:block;height:100%;background:var(--acc);width:0;transition:width .3s}
 .tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;border-bottom:1px solid var(--line);margin-bottom:12px}
-.tabs button{background:none;border:0;border-bottom:3px solid transparent;min-height:52px;font-weight:600;color:var(--mute);padding:0 2px}
+.tabs button{background:none;border:0;border-bottom:3px solid transparent;min-height:52px;font-weight:600;font-size:.92rem;color:var(--mute);padding:0 2px}
 .tabs button[aria-selected=true]{color:var(--acc);border-color:var(--acc)}
 .now{padding:12px 0}
 .now h2{font:600 1.7rem/1.25 Georgia,serif;margin:.3rem 0}
@@ -66,7 +66,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 dialog label{display:block;margin:14px 0;font-weight:600}
 dialog select,dialog input[type=range]{display:block;width:100%;min-height:48px;margin-top:6px;background:var(--bg);border:1.5px solid var(--line);border-radius:12px;padding:0 10px}
 dialog .btn{width:100%;margin-top:10px}
-#toast{position:fixed;left:50%;bottom:calc(230px + env(safe-area-inset-bottom));transform:translate(-50%,20px);background:var(--ink);color:var(--bg);padding:12px 18px;border-radius:14px;max-width:90vw;opacity:0;pointer-events:none;transition:.25s;z-index:30;text-align:center}
+#toast{position:fixed;left:50%;bottom:calc(230px + env(safe-area-inset-bottom));transform:translate(-50%,20px);background:var(--ink);color:var(--bg);padding:12px 18px;border-radius:14px;width:max-content;max-width:90vw;opacity:0;pointer-events:none;transition:.25s;z-index:30;text-align:center}
 #toast.show{opacity:1;transform:translate(-50%,0)}
 body:not(.inbook) #toast{bottom:24px}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
