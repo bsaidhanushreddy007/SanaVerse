@@ -1,0 +1,13 @@
+{
+  "name": "SanaVerse",
+  "short_name": "SanaVerse",
+  "description": "Upload a book. Press play. Listen.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f3ee",
+  "theme_color": "#3f6b5a",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

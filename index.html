@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SanaVerse – Upload a book. Press play. Listen.</title>
+<meta name="description" content="Turn your PDF books into listening. Private, in your browser.">
+<meta name="theme-color" content="#3f6b5a">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="stylesheet" href="styles.css">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script defer src="app.js"></script>
+</head>
+<body>
+
+<main id="library" class="view">
+  <header class="top">
+    <h1 class="brand">Sana<span>Verse</span></h1>
+    <button class="txt openSettings">Settings</button>
+  </header>
+  <p class="tag">Turn your books into listening.</p>
+  <label class="btn primary big" for="file" id="addBtn">+ Add PDF</label>
+  <input id="file" type="file" accept="application/pdf,.pdf" hidden>
+  <p class="muted small center">Books stay on this device. Nothing is uploaded.</p>
+  <section id="continue"></section>
+  <h2 class="lbl">My books</h2>
+  <div id="books"></div>
+  <p id="empty" class="muted center">Your library is empty. Add a PDF book to begin.</p>
+  <p class="muted small center foot">Only add PDFs you have the right to use.</p>
+</main>
+
+<main id="book" class="view" hidden>
+  <header class="top">
+    <button class="txt" id="back">← Library</button>
+    <button class="txt openSettings">Settings</button>
+  </header>
+  <p id="nospeech" class="warn" hidden>This browser can’t read text aloud. Try Chrome, Edge, Safari or Firefox.</p>
+  <nav class="tabs" role="tablist" aria-label="Book sections">
+    <button role="tab" data-tab="listen">Listen</button>
+    <button role="tab" data-tab="text">Text</button>
+    <button role="tab" data-tab="chapters">Chapters</button>
+    <button role="tab" data-tab="marks">Bookmarks</button>
+  </nav>
+
+  <section class="tab" id="tab-listen">
+    <div class="now">
+      <div class="muted" id="bk"></div>
+      <h2 id="chap"></h2>
+      <div class="muted" id="pct"></div>
+    </div>
+    <h3 class="lbl">Speed</h3>
+    <div class="chips" id="speeds"></div>
+    <h3 class="lbl">Sleep timer</h3>
+    <div class="chips" id="sleeps"></div>
+    <p class="muted" id="sleepInfo" aria-live="polite"></p>
+    <div class="row">
+      <button class="btn" id="markBtn">🔖 Bookmark this spot</button>
+      <button class="btn" id="restartBtn">Restart book</button>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-text" hidden>
+    <input id="q" type="search" placeholder="Search this book" aria-label="Search this book">
+    <div id="results" hidden></div>
+    <article id="txt"></article>
+  </section>
+
+  <section class="tab" id="tab-chapters" hidden><div id="chapList"></div></section>
+  <section class="tab" id="tab-marks" hidden><div id="markList"></div></section>
+
+  <footer class="dock">
+    <input id="seek" type="range" min="0" max="1" value="0" aria-label="Book position">
+    <div class="times"><span id="time">0:00 / 0:00</span><span id="bTitle"></span></div>
+    <div class="ctrl">
+      <button id="prev" aria-label="Previous chapter"><b>⏮</b><small>Prev</small></button>
+      <button id="back15" aria-label="Rewind 15 seconds"><b>↺</b><small>−15s</small></button>
+      <button id="play" class="main" aria-label="Play"><b>▶</b><small>Play</small></button>
+      <button id="fwd30" aria-label="Forward 30 seconds"><b>↻</b><small>+30s</small></button>
+      <button id="next" aria-label="Next chapter"><b>⏭</b><small>Next</small></button>
+    </div>
+  </footer>
+</main>
+
+<div id="busy" hidden role="alertdialog" aria-live="polite">
+  <div class="box"><h2 id="busyMsg">Reading your book…</h2><div class="bar"><i id="busyBar"></i></div><p class="muted small">Large books can take a minute.</p></div>
+</div>
+
+<dialog id="settings">
+  <h2>Settings</h2>
+  <label>Theme
+    <select id="setTheme"><option value="auto">Match my device</option><option value="light">Light</option><option value="dark">Dark</option></select>
+  </label>
+  <label>Voice
+    <select id="setVoice"></select>
+  </label>
+  <label>Text size <span id="sizeVal"></span>
+    <input id="setSize" type="range" min="16" max="30" step="1">
+  </label>
+  <p class="muted small" id="storeInfo"></p>
+  <button class="btn danger" id="clearAll">Delete all books and data</button>
+  <button class="btn primary" id="closeSettings">Done</button>
+</dialog>
+
+<div id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
