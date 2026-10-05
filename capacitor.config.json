@@ -1,0 +1,7 @@
+{
+  "appId": "app.sanaverse.reader",
+  "appName": "SanaVerse",
+  "webDir": "www",
+  "server": { "androidScheme": "https" },
+  "android": { "allowMixedContent": false }
+}

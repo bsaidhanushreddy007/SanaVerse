@@ -70,3 +70,10 @@ dialog .btn{width:100%;margin-top:10px}
 #toast.show{opacity:1;transform:translate(-50%,0)}
 body:not(.inbook) #toast{bottom:24px}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+.status{margin-top:8px;padding:10px 12px;border-radius:12px;background:var(--hl);font-size:.9rem;min-height:1.5em}
+.status:empty{display:none}
+.cov{width:56px;height:76px;object-fit:cover;border-radius:6px;border:1px solid var(--line);flex:none}
+.card .head{display:flex;gap:12px;align-items:flex-start}
+.card .head > div{min-width:0}
+dialog p{margin:.6rem 0}
+audio{display:none}

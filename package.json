@@ -1,0 +1,27 @@
+{
+  "name": "sanaverse",
+  "version": "1.0.0",
+  "description": "Turn your PDF books into listening. Private, free, on-device neural narration.",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "serve": "python3 -m http.server 8000",
+    "build:web": "node scripts/build-web.mjs",
+    "build:native": "node scripts/build-web.mjs --native",
+    "android:add": "npx cap add android && node scripts/patch-android.mjs",
+    "android:sync": "npm run build:native && node scripts/patch-android.mjs && npx cap sync android",
+    "android:apk": "npm run android:sync && cd android && ./gradlew assembleDebug"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/core": "^6.2.0",
+    "@capacitor/local-notifications": "^6.1.0",
+    "@jofr/capacitor-media-session": "*"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^6.2.0",
+    "esbuild": "^0.24.0",
+    "pdfjs-dist": "^5.0.0"
+  }
+}

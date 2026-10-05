@@ -4,16 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>SanaVerse – Upload a book. Press play. Listen.</title>
-<meta name="description" content="Turn your PDF books into listening. Private, in your browser.">
+<meta name="description" content="Turn your PDF books into natural-sounding audiobooks. Private, free, on your device.">
 <meta name="theme-color" content="#3f6b5a">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="icon.svg">
+<link rel="apple-touch-icon" href="icon-192.png">
 <link rel="stylesheet" href="styles.css">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script defer src="app.js"></script>
+<script type="module" src="js/native.js"></script>
+<script type="module" src="js/app.js"></script>
 </head>
 <body>
+<audio id="au" preload="auto" playsinline></audio>
 
 <main id="library" class="view">
   <header class="top">
@@ -23,7 +25,7 @@
   <p class="tag">Turn your books into listening.</p>
   <label class="btn primary big" for="file" id="addBtn">+ Add PDF</label>
   <input id="file" type="file" accept="application/pdf,.pdf" hidden>
-  <p class="muted small center">Books stay on this device. Nothing is uploaded.</p>
+  <p class="muted small center">Free and private. Books and narration stay on this device.</p>
   <section id="continue"></section>
   <h2 class="lbl">My books</h2>
   <div id="books"></div>
@@ -36,7 +38,6 @@
     <button class="txt" id="back">← Library</button>
     <button class="txt openSettings">Settings</button>
   </header>
-  <p id="nospeech" class="warn" hidden>This browser can’t read text aloud. Try Chrome, Edge, Safari or Firefox.</p>
   <nav class="tabs" role="tablist" aria-label="Book sections">
     <button role="tab" data-tab="listen">Listen</button>
     <button role="tab" data-tab="text">Text</button>
@@ -49,6 +50,7 @@
       <div class="muted" id="bk"></div>
       <h2 id="chap"></h2>
       <div class="muted" id="pct"></div>
+      <div class="status" id="audioStatus" aria-live="polite"></div>
     </div>
     <h3 class="lbl">Speed</h3>
     <div class="chips" id="speeds"></div>
@@ -57,8 +59,10 @@
     <p class="muted" id="sleepInfo" aria-live="polite"></p>
     <div class="row">
       <button class="btn" id="markBtn">🔖 Bookmark this spot</button>
+      <button class="btn" id="prepBtn">Prepare this chapter</button>
       <button class="btn" id="restartBtn">Restart book</button>
     </div>
+    <p class="muted small" id="prepHint">“Prepare this chapter” generates its audio now (best while charging), so it plays smoothly and offline later.</p>
   </section>
 
   <section class="tab" id="tab-text" hidden>
@@ -84,21 +88,42 @@
 </main>
 
 <div id="busy" hidden role="alertdialog" aria-live="polite">
-  <div class="box"><h2 id="busyMsg">Reading your book…</h2><div class="bar"><i id="busyBar"></i></div><p class="muted small">Large books can take a minute.</p></div>
+  <div class="box"><h2 id="busyMsg">Reading PDF…</h2><div class="bar"><i id="busyBar"></i></div><p class="muted small">Large books can take a minute.</p></div>
 </div>
+
+<dialog id="setup">
+  <h2>Natural voice</h2>
+  <p>SanaVerse reads with a free, open-source neural voice that runs on your device. It needs a one-time download of about 90 MB (Wi-Fi recommended). After that it works offline.</p>
+  <div class="bar"><i id="setupBar"></i></div>
+  <p class="muted" id="setupMsg" aria-live="polite"></p>
+  <button class="btn primary" id="setupGo">Download natural voice</button>
+  <button class="btn" id="setupBasic">Use Basic voice instead</button>
+  <button class="btn" id="setupCancel">Not now</button>
+</dialog>
 
 <dialog id="settings">
   <h2>Settings</h2>
+  <label>Voice quality
+    <select id="setQuality"><option value="natural">Natural (neural, on-device)</option><option value="basic">Basic (device voice, instant)</option></select>
+  </label>
+  <label>Natural voice
+    <select id="setNVoice"></select>
+  </label>
+  <label>Basic voice
+    <select id="setBVoice"></select>
+  </label>
   <label>Theme
     <select id="setTheme"><option value="auto">Match my device</option><option value="light">Light</option><option value="dark">Dark</option></select>
-  </label>
-  <label>Voice
-    <select id="setVoice"></select>
   </label>
   <label>Text size <span id="sizeVal"></span>
     <input id="setSize" type="range" min="16" max="30" step="1">
   </label>
+  <label>Keep up to this much generated audio
+    <select id="setCap"><option value="200">200 MB</option><option value="500">500 MB</option><option value="1000">1 GB</option><option value="2000">2 GB</option></select>
+  </label>
   <p class="muted small" id="storeInfo"></p>
+  <button class="btn" id="clearAudio">Clear generated audio</button>
+  <button class="btn" id="removeModel">Remove downloaded voice model</button>
   <button class="btn danger" id="clearAll">Delete all books and data</button>
   <button class="btn primary" id="closeSettings">Done</button>
 </dialog>
