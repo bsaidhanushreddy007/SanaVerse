@@ -49,6 +49,28 @@ Files: the web app is the loose files in the repo root: `index.html`, `app.js` (
 
 **Performance reality check:** neural voices need real CPU. A recent phone should generate faster than it plays; an older or low-RAM phone may not. The Listen tab shows "voice speed ×N real time". If it is below your playback speed, use 1× and tap **Prepare this chapter**, or choose the Basic voice. SanaVerse generates ~3 minutes ahead and never makes you wait for the whole book.
 
+## If narration is slow on your phone
+
+The natural voice is a real neural model, so it needs CPU. SanaVerse does several things about this:
+
+- **Speed boost (Settings):** it runs several voice engines side by side and prepares a part's sentences in parallel. *Auto* picks a safe number for your phone (2 on 4 GB phones, up to 3 on bigger ones). Each engine uses extra memory; if the app reloads or crashes, set it to **1**. On a strong phone, **4** is fastest.
+- **Voice processing → GPU (experimental):** uses WebGPU where the phone supports it, which can be much faster. It downloads a larger voice file (about 330 MB) and falls back to CPU automatically if it doesn't work.
+- **Live progress:** the Listen tab shows "Preparing narration… sentence 2 of 3", the voice speed (× real time), and how many engines are running.
+- **Slow-phone prompt:** if narration is slower than half of real time and you are actually waiting, SanaVerse offers (once) to switch to the instant Basic voice.
+- **Prepare this chapter** generates ahead while you do something else (best while charging).
+
+If your phone is still too slow, use the Basic voice for instant listening. It can't play with the screen off, but it never makes you wait.
+
+## If "Install app" fails ("can't open app")
+
+Chrome's own installability checker reports no problems with SanaVerse's manifest, service worker or icons, so this is a phone/browser issue. Try, in order:
+
+1. Open the site in **Chrome** itself (not Samsung Internet, an in-app browser such as WhatsApp or Instagram, or a "Lite" browser). Update Chrome and **Google Play services**.
+2. Tap ⋮ → **Install app** (or **Add to Home screen → Install**), and wait for it to finish rather than leaving Chrome.
+3. If it still fails, use ⋮ → **Add to Home screen → Create shortcut**. You get the same icon and the app opens full-screen, and audio plays in the background the same way. Installing is optional; the app works fine in a Chrome tab.
+4. Some phones (certain Xiaomi/Oppo/Vivo/Samsung settings) block installing "apps" from the browser. Check Settings → Apps → Chrome → Install unknown apps / battery restrictions.
+5. The Android APK (below) is another install route that doesn't depend on Chrome's installer.
+
 ## Run it
 
 ```
@@ -126,7 +148,7 @@ SanaVerse is a personal listening tool. Only add PDFs you have the legal right t
 
 ## What was tested
 
-Automated end-to-end tests (`tests/`, 80+ checks), run in headless Chromium at phone size with real generated PDFs (chaptered book with running headers/page numbers, scanned PDF, corrupt file, non-PDF):
+Automated end-to-end tests (`tests/`, 90+ checks), run in headless Chromium at phone size with real generated PDFs (chaptered book with running headers/page numbers, scanned PDF, corrupt file, non-PDF):
 
 - **Starts however it is opened**: from a web address with an Android-Chrome user agent, from `file://`, and from loose files with no folders; a missing file shows a clear message; old caches are cleaned on update
 - Open app; upload; extraction; header/footer/page-number removal; chapter detection; cover; scanned/corrupt/non-PDF errors

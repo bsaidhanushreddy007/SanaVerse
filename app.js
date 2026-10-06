@@ -9,7 +9,7 @@ const LS = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } },
   del(k) { try { localStorage.removeItem(k); } catch {} }
 };
-const S = Object.assign({ theme: 'auto', rate: 1, size: 19, quality: 'natural', nvoice: 'af_heart', bvoice: '', cap: 500 }, LS.get('sv:settings', {}));
+const S = Object.assign({ theme: 'auto', rate: 1, size: 19, quality: 'natural', nvoice: 'af_heart', bvoice: '', cap: 500, pool: 0, accel: 'cpu' }, LS.get('sv:settings', {}));
 if (S.voice && !S.bvoice) { S.bvoice = S.voice; delete S.voice; } // settings from the first (browser-voice-only) version
 const saveS = () => LS.set('sv:settings', S);
 
@@ -224,47 +224,59 @@ const Q = new URLSearchParams(location.search);
 const MOCK = Q.get('engine') === 'mock', MOCK_SCALE = +(Q.get('scale') || 20), MOCK_DELAY = +(Q.get('delay') || 20);
 
 class Engine {
-  constructor() { this.state = 'idle'; this.mb = 0; this.totalMb = 0; this.listeners = []; this.pending = new Map(); this.n = 0; this.files = {}; this.kind = MOCK ? 'mock' : 'kokoro'; }
+  constructor() { this.state = 'idle'; this.mb = 0; this.totalMb = 0; this.listeners = []; this.files = {}; this.kind = MOCK ? 'mock' : 'kokoro'; this.ws = []; this.queue = []; this.n = 0; this.accel = 'cpu'; }
   get supported() { return MOCK || (typeof Worker !== 'undefined' && typeof WebAssembly !== 'undefined'); }
   get ready() { return this.state === 'ready'; }
   get modelKnown() { return MOCK || LS.get('sv:model', false); }
+  get workerCount() { return MOCK ? 1 : this.ws.filter(o => o.ready).length; }
   on(fn) { this.listeners.push(fn); }
   set(state) { this.state = state; this.listeners.forEach(f => f(this)); }
+  poolSize() { // how many voice engines to run side by side (each holds its own copy of the model in memory)
+    if (S.accel === 'gpu') return 1;
+    if (+S.pool > 0) return Math.min(4, +S.pool);
+    const cores = navigator.hardwareConcurrency || 4, mem = navigator.deviceMemory || 4;
+    return mem <= 3 ? 1 : Math.max(1, Math.min(mem <= 4 ? 2 : 3, Math.floor(cores / 2)));
+  }
+  spawn(first, ok) {
+    let w; try { w = new Worker('tts-worker.js', { type: 'module' }); } catch { return null; }
+    const o = { w, ready: false, job: null }; this.ws.push(o);
+    w.onmessage = e => this.msg(o, e.data, first, ok);
+    w.onerror = () => { if (first) { this.error = 'Voice engine failed to start'; this.set('error'); ok(false); } else this.drop(o); };
+    w.postMessage({ type: 'init', device: S.accel === 'gpu' ? 'gpu' : 'cpu' }); return o;
+  }
   ensure() {
     if (this.ready) return Promise.resolve(true);
     if (this.init) return this.init;
     this.init = new Promise(ok => {
       if (MOCK) { this.set('ready'); return ok(true); }
-      try { this.w = new Worker('tts-worker.js', { type: 'module' }); } catch { this.error = 'Workers unavailable'; this.set('error'); return ok(false); }
+      if (!this.spawn(true, ok)) { this.error = 'Workers unavailable'; this.set('error'); return ok(false); }
       this.set(this.modelKnown ? 'loading' : 'downloading');
-      this.w.onmessage = e => this.msg(e.data, ok);
-      this.w.onerror = () => { this.error = 'Voice engine failed to start'; this.set('error'); ok(false); };
-      this.w.postMessage({ type: 'init' });
-    }).then(r => { if (!r) { this.init = null; try { this.w && this.w.terminate(); } catch {} } return r; });
+    }).then(r => { if (!r) { this.init = null; this.killAll(); } else if (!MOCK) for (let i = 1; i < this.poolSize(); i++) setTimeout(() => this.ready && this.ws.length < this.poolSize() && this.spawn(false), 1500 * i); return r; });
     return this.init;
   }
-  msg(m, ok) {
+  msg(o, m, first, ok) {
     if (m.type === 'progress') {
-      const p = m.p || {};
+      if (!first) return; const p = m.p || {};
       if (p.file && p.total) this.files[p.file] = { l: p.loaded || 0, t: p.total };
       const f = Object.values(this.files), L = f.reduce((a, x) => a + x.l, 0), T = f.reduce((a, x) => a + x.t, 0);
       this.mb = L / 1048576; this.totalMb = T / 1048576; this.set(this.state === 'ready' ? 'ready' : (T && L < T ? 'downloading' : 'loading'));
-    } else if (m.type === 'ready') { LS.set('sv:model', true); this.set('ready'); ok(true); }
-    else if (m.type === 'error') { this.error = m.msg; this.set('error'); ok(false); }
-    else if (m.type === 'audio') { const p = this.pending.get(m.id); p && (this.pending.delete(m.id), p.ok({ pcm: m.pcm, sr: m.sr })); }
-    else if (m.type === 'genError') { const p = this.pending.get(m.id); p && (this.pending.delete(m.id), p.no(new Error(m.msg))); }
+    } else if (m.type === 'ready') { o.ready = true; if (first) { this.accel = m.accel || 'cpu'; LS.set('sv:model', true); this.set('ready'); ok(true); } this.listeners.forEach(f => f(this)); this.pump(); }
+    else if (m.type === 'error') { if (first) { this.error = m.msg; this.set('error'); ok(false); } else this.drop(o); }
+    else if (m.type === 'audio') { const j = o.job; o.job = null; j && j.ok({ pcm: m.pcm, sr: m.sr }); this.pump(); }
+    else if (m.type === 'genError') { const j = o.job; o.job = null; j && j.no(new Error(m.msg)); this.pump(); }
   }
-  generate(text, voice) {
-    if (MOCK) return new Promise(ok => setTimeout(() => { // silence-with-a-tone whose length mimics real speech (~15 chars/s, sped up by ?scale)
+  pump() { for (const o of this.ws) if (o.ready && !o.job && this.queue.length) { const j = this.queue.shift(); o.job = j; o.w.postMessage({ type: 'gen', id: ++this.n, text: j.text, voice: j.voice }); } }
+  generate(text, voice, tag) { // many calls may be in flight at once; idle voice engines pick them up
+    if (MOCK) return new Promise(ok => setTimeout(() => { // a tone whose length mimics real speech (~15 chars/s, sped up by ?scale)
       const n = Math.max(2400, Math.round(text.length / 15 / MOCK_SCALE * SR)), a = new Float32Array(n);
       for (let i = 0; i < n; i++) a[i] = 0.02 * Math.sin(i * 0.05); ok({ pcm: a, sr: SR }); }, MOCK_DELAY));
-    return new Promise((ok, no) => { const id = ++this.n; this.pending.set(id, { ok, no }); this.w.postMessage({ type: 'gen', id, text, voice }); });
+    return new Promise((ok, no) => { this.queue.push({ text, voice, tag, ok, no }); this.pump(); });
   }
-  async removeModel() {
-    try { this.w && this.w.terminate(); } catch {} this.w = null; this.init = null; this.files = {}; this.pending.clear();
-    try { await caches.delete('transformers-cache'); } catch {}
-    LS.set('sv:model', false); this.set('idle');
-  }
+  cancelTag(tag) { const keep = []; for (const j of this.queue) j.tag === tag ? j.no(new Error('cancelled')) : keep.push(j); this.queue = keep; }
+  drop(o) { try { o.w.terminate(); } catch {} this.ws = this.ws.filter(x => x !== o); if (o.job) { o.job.no(new Error('worker lost')); o.job = null; } }
+  killAll() { this.ws.slice().forEach(o => this.drop(o)); this.ws = []; this.queue.forEach(j => j.no(new Error('cancelled'))); this.queue = []; }
+  reconfigure() { this.killAll(); this.init = null; this.files = {}; this.set('idle'); } // after changing pool size / GPU setting
+  async removeModel() { this.killAll(); this.init = null; this.files = {}; try { await caches.delete('transformers-cache'); } catch {} LS.set('sv:model', false); this.set('idle'); }
 }
 const engine = new Engine();
 
@@ -361,22 +373,25 @@ class Player {
       if (finished && this.prepSec != null) { this.prepSec = null; this.ui.toast('Chapter audio is ready to play offline.'); }
     } finally { this.genBusy = false; this.ui.onStatus(); }
   }
+  genChunk(text, tag) { return engine.generate(text, S.nvoice, tag).catch(e => { if (e && e.message === 'cancelled') throw e; return engine.generate(text, S.nvoice, tag); }); }
   async generate(k) {
     const seg = this.segs[k]; let ok = false;
     try { ok = await engine.ensure(); } catch {}
     if (!ok) { this.engineFailed(true); return false; }
-    const t0 = performance.now(), parts = [], offs = []; let n = 0, chars = 0;
-    for (let i = seg.a; i < seg.b; i++) {
-      if (!this.windowSegs().includes(k)) return true; // listener moved away – abandon, loop picks the new target
-      const [t, f] = this.chunks[i]; let r;
-      for (let tries = 0; ; tries++) { try { r = await engine.generate(prepSpeech(t, f), S.nvoice); break; } catch { if (tries >= 1) { this.engineFailed(false); return false; } } }
-      offs.push(n / SR); parts.push(r.pcm); n += r.pcm.length; chars += t.length;
+    const t0 = performance.now(), tag = 'seg' + k, total = seg.b - seg.a; let done = 0; this.prog = { k, done: 0, total };
+    const jobs = []; for (let i = seg.a; i < seg.b; i++) { const [t, f] = this.chunks[i]; jobs.push(this.genChunk(prepSpeech(t, f), tag).then(r => { this.prog.done = ++done; this.ui.onStatus(); return r; })); }
+    const watch = setInterval(() => { if (!this.windowSegs().includes(k)) engine.cancelTag(tag); }, 400); // listener moved away: drop queued work
+    let res; try { res = await Promise.all(jobs); } catch (e) { if (e && e.message === 'cancelled') return true; this.engineFailed(false); return false; } finally { clearInterval(watch); this.prog = null; }
+    const parts = [], offs = []; let n = 0, chars = 0;
+    for (let j = 0; j < res.length; j++) {
+      const i = seg.a + j, f = this.chunks[i][1]; offs.push(n / SR); parts.push(res[j].pcm); n += res[j].pcm.length; chars += this.chunks[i][0].length;
       const nx = this.chunks[i + 1], pause = f === 2 ? 0.7 : (nx && nx[1] === 1 ? 0.4 : 0.12), gap = new Float32Array(Math.round(pause * SR)); parts.push(gap); n += gap.length;
     }
     const dur = n / SR; await this.store(k, encodeWav(concat(parts, n), SR), { offs, dur });
-    this.rtf = dur / Math.max(0.05, (performance.now() - t0) / 1000);
+    const wall = Math.max(0.05, (performance.now() - t0) / 1000); this.rtf = dur / wall; this.segSecs = this.segSecs ? this.segSecs * 0.6 + wall * 0.4 : wall;
     if (engine.kind !== 'mock') { this.cps = this.cps * 0.7 + (chars / Math.max(1, dur)) * 0.3; LS.set('sv:cps', this.cps); }
     this.ui.onStatus();
+    if (this.stalled && this.rtf < 0.5 && engine.kind !== 'mock') this.ui.onSlow(this.rtf); // the listener is actually waiting on a slow device
     if (this.playing && this.waiting && k === this.cur) this.playFrom(this.i, this.o);
     return true;
   }
@@ -433,7 +448,7 @@ class Player {
     au.onloadedmetadata = () => { au.onloadedmetadata = null; try { au.currentTime = Math.min(t, Math.max(0, au.duration - 0.2)); } catch {} au.playbackRate = S.rate; au.play().catch(e => this.playErr(e)); };
     au.preservesPitch = true; au.load(); this.ui.onState(); this.updateMedia(); this.ui.onChange();
   }
-  setBuffering() { const au = this.au; this.curData = null; if (!au.loop || !au.src.endsWith(silenceUrl().slice(-12))) { au.src = silenceUrl(); au.loop = true; au.playbackRate = 1; au.play().catch(() => {}); } this.ui.onState(); }
+  setBuffering() { this.stalled = true; const au = this.au; this.curData = null; if (!au.loop || !au.src.endsWith(silenceUrl().slice(-12))) { au.src = silenceUrl(); au.loop = true; au.playbackRate = 1; au.play().catch(() => {}); } this.ui.onState(); }
   playErr(e) { if (e && e.name === 'AbortError') return; this.pause(); this.ui.toast(e && e.name === 'NotAllowedError' ? 'Tap Play to start the audio.' : 'The audio couldn’t be played. Press Play to try again.'); }
   onAudioError() { if (!this.playing || !this.curData || this.au.loop) return; const d = this.curData, k = this.cur; URL.revokeObjectURL(d.url); this.mem.delete(k); this.cached.delete(k);
     if (this.fails++ < 1) this.playFrom(this.i, this.o); else { this.pause(); this.ui.toast('This audio couldn’t be played. Press Play to regenerate it.'); } }
@@ -534,7 +549,7 @@ let toastT;
 function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 5000); }
 
 let tab = 'listen', seeking = false, lastSec = -1, lastI = -1, lastStatus = 0, nativeDone = false;
-const ui = { toast, onChange: () => upd(), onState: () => { renderPlay(); renderStatus(); }, onStatus: () => renderStatus(), onTick: () => { if (Date.now() - lastStatus > 1000) renderStatus(); }, onSleep: () => sleepUI() };
+const ui = { toast, onChange: () => upd(), onState: () => { renderPlay(); renderStatus(); }, onStatus: () => renderStatus(), onTick: () => { if (Date.now() - lastStatus > 1000) renderStatus(); }, onSleep: () => sleepUI(), onSlow };
 const P = new Player(ui);
 window.SV = { P, S, engine, DB, LS }; // handy for debugging and automated tests
 
@@ -622,9 +637,9 @@ function statusText() {
   if (engine.state === 'error') return 'The natural voice couldn’t start. Check your connection and press Play to try again.';
   let s = '';
   if (P.prepSec != null) { const ks = P.segs.map((x, k) => k).filter(k => P.segs[k].s === P.prepSec); s += `Preparing this chapter: ${ks.filter(k => P.has(k)).length} of ${ks.length} parts. `; }
-  if (P.playing && P.waiting) return s + 'Preparing narration…';
+  if (P.playing && P.waiting) { const g = P.prog; return s + 'Preparing narration…' + (g ? ` sentence ${Math.min(g.done + 1, g.total)} of ${g.total}` : '') + (P.segSecs ? ` (usually about ${Math.round(P.segSecs)} s per part)` : ''); }
   const a = P.ahead(); if (a > 1) s += `Audio ready ahead: ${fmt(a)}`;
-  if (P.rtf) { s += (s ? ' · ' : '') + `voice speed ${P.rtf.toFixed(1)}× real time`; if (P.playing && P.rtf < S.rate * 1.05) s += '. Your device generates audio slower than it plays; try 1× speed or “Prepare this chapter”.'; }
+  if (P.rtf) { s += (s ? ' · ' : '') + `voice speed ${P.rtf.toFixed(1)}× real time (${engine.workerCount} voice engine${engine.workerCount === 1 ? '' : 's'}, ${engine.accel === 'gpu' ? 'GPU' : 'CPU'})`; if (P.playing && P.rtf < S.rate * 1.05) s += '. Your device generates audio slower than it plays; try 1× speed, “Prepare this chapter”, or raise “Speed boost” in Settings.'; }
   return s;
 }
 function renderStatus() { lastStatus = Date.now(); $('#audioStatus').textContent = statusText(); const pb = $('#prepBtn'); if (pb) pb.hidden = P.mode !== 'neural'; $('#prepHint').hidden = P.mode !== 'neural'; }
@@ -680,6 +695,15 @@ function doSearch() {
   if (!n) box.append(h('p', 'muted', 'No matches found.'));
 }
 
+/* ---------- slow device: offer the instant Basic voice ---------- */
+function onSlow(rtf) {
+  if (LS.get('sv:slowAsked', false)) return; LS.set('sv:slowAsked', true);
+  const was = P.playing;
+  if (confirm(`The natural voice is slow on this phone: each minute of audio takes about ${Math.max(2, Math.round(1 / rtf))} minutes to prepare, so playback keeps pausing.\n\nSwitch to the Basic voice for instant listening? (You can switch back in Settings, and Settings → Speed boost may help.)\n\nOK = use Basic voice\nCancel = keep the natural voice`)) {
+    P.pause(); S.quality = 'basic'; saveS(); renderStatus(); renderPlay(); if (was) P.play();
+  }
+}
+
 /* ---------- play / voice setup ---------- */
 async function nativePrep() { if (nativeDone) return; nativeDone = true; try { await Promise.race([window.SVNative && window.SVNative.prepare && window.SVNative.prepare(), new Promise(r => setTimeout(r, 1500))]); } catch {} }
 async function togglePlay() {
@@ -706,7 +730,7 @@ function fillVoices() {
   [...vs].sort((a, b) => (b.lang.startsWith(lang) - a.lang.startsWith(lang)) || a.name.localeCompare(b.name)).forEach(v => sel.append(new Option(`${v.name} (${v.lang})`, v.voiceURI))); sel.value = S.bvoice;
 }
 async function openSettings() {
-  $('#setQuality').value = S.quality; $('#setTheme').value = S.theme; $('#setSize').value = S.size; $('#sizeVal').textContent = S.size + 'px'; $('#setCap').value = String(S.cap); fillVoices();
+  $('#setQuality').value = S.quality; $('#setTheme').value = S.theme; $('#setSize').value = S.size; $('#sizeVal').textContent = S.size + 'px'; $('#setCap').value = String(S.cap); $('#setPool').value = String(S.pool); $('#setAccel').value = S.accel; fillVoices();
   $('#settings').showModal();
   let a = 0; try { a = (await DB.audioIdx()).reduce((x, y) => x + y.size, 0); } catch {}
   let u = ''; try { const e = await navigator.storage.estimate(); u = ` Total storage used: ${(e.usage / 1048576).toFixed(0)} MB.`; } catch {}
@@ -723,6 +747,9 @@ function bind() {
   $('#setNVoice').onchange = async e => { S.nvoice = e.target.value; saveS(); if (P.meta) await P.reloadVoice(); };
   $('#setBVoice').onchange = e => { S.bvoice = e.target.value; saveS(); if (P.playing && P.mode === 'basic') P.speak(); };
   $('#setCap').onchange = e => { S.cap = +e.target.value; saveS(); };
+  const reboot = () => { if (P.meta) P.pause(); engine.reconfigure(); saveS(); renderStatus(); toast('Voice engines will restart the next time you press Play.'); };
+  $('#setPool').onchange = e => { S.pool = +e.target.value; reboot(); };
+  $('#setAccel').onchange = e => { S.accel = e.target.value; reboot(); if (S.accel === 'gpu') toast('GPU mode downloads a larger voice file (about 330 MB) and only works on some phones. It falls back to CPU automatically.'); };
   $('#setSize').oninput = e => { S.size = +e.target.value; saveS(); $('#sizeVal').textContent = S.size + 'px'; $('#txt').style.fontSize = S.size + 'px'; };
   $('#clearAudio').onclick = async () => { if (P.meta) P.pause(); await P.clearAudio(); toast('Generated audio cleared.'); openSettings(); };
   $('#removeModel').onclick = async () => { if (!confirm('Remove the downloaded voice model? It will need to be downloaded again (about 90 MB) before the Natural voice can be used.')) return; if (P.meta) P.pause(); await engine.removeModel(); toast('Voice model removed.'); openSettings(); };
