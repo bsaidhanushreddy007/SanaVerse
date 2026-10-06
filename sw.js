@@ -1,7 +1,7 @@
 /* SanaVerse service worker: opens the app offline after the first visit. Book text and narration live in IndexedDB (not here);
    the neural voice model is cached by the voice engine itself in the Cache API ("transformers-cache"). */
-const V = 'sanaverse-v2';
-const SHELL = ['./', 'index.html', 'styles.css', 'manifest.json', 'icon.svg', 'icon-192.png', 'icon-512.png', 'js/app.js', 'js/extract.js', 'js/storage.js', 'js/tts.js', 'js/tts-worker.js', 'js/player.js', 'js/native.js'];
+const V = 'sanaverse-v3';
+const SHELL = ['./', 'index.html', 'styles.css', 'manifest.json', 'icon.svg', 'icon-192.png', 'icon-512.png', 'app.js', 'native.js', 'tts-worker.js'];
 const CDN = ['https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js', 'https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/dist/kokoro.web.js'];
 const CDN_HOSTS = ['cdnjs.cloudflare.com', 'cdn.jsdelivr.net'];
 

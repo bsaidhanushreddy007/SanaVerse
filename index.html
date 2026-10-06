@@ -11,8 +11,22 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="stylesheet" href="styles.css">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script type="module" src="js/native.js"></script>
-<script type="module" src="js/app.js"></script>
+<script>
+/* If the app can't start, say why instead of leaving a dead screen. */
+window.svBootFail = function (kind) {
+  if (window.SV || !document.body || document.getElementById('bootfail')) return;
+  var d = document.createElement('div'); d.id = 'bootfail'; d.setAttribute('role', 'alert');
+  d.style.cssText = 'margin:12px;padding:16px;border:2px solid #a23b3b;border-radius:14px;background:#fff;color:#26302b;font:16px/1.5 system-ui,sans-serif';
+  var h = document.createElement('b'); h.textContent = 'SanaVerse could not start.'; d.appendChild(h);
+  var p = document.createElement('p');
+  p.textContent = kind === 'old' ? 'This browser is too old. Please update Chrome, Edge, Safari or Firefox.'
+    : 'Some app files did not load. Make sure these files are uploaded in the SAME folder: index.html, app.js, native.js, tts-worker.js, sw.js, styles.css, manifest.json and the icon files. Then reload the page.';
+  d.appendChild(p); document.body.insertBefore(d, document.body.firstChild);
+};
+setTimeout(function () { window.svBootFail(); }, 4000);
+</script>
+<script defer src="native.js"></script>
+<script defer src="app.js" onerror="setTimeout(svBootFail,0)"></script>
 </head>
 <body>
 <audio id="au" preload="auto" playsinline></audio>
